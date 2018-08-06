@@ -1,0 +1,82 @@
+#!/usr/local/bin/bash -f
+
+#
+# monitor uplink.  keep my isp honest.
+# ping default router a couple of times.  test DNS
+#
+# cronjob:
+# */5 * * * *     /home/ping/bin/netmoncc
+#
+# output to syslog, which can be filtered to a separte file using syslog.conf:
+# !netmoncc
+# *.*		/var/log/netmoncc.log
+#
+# needs 'gethostbyname.c'.  why? needed something simple and reliable and not
+# dependent on too much else
+#
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+PROGNAME=`basename $0`
+LOCKFILE=/var/tmp/${PROGNAME}
+
+if [ -f $LOCKFILE ]; then
+	echo "another instance of $PROGNAME is still running"
+	echo "if this is not the case, delete $LOCKFILE and try again"
+	exit 1
+fi
+
+ESTATUS=0
+
+GH=$HOME/bin/gethostbyname
+GOOGLE="8.8.8.8"
+ROUTER="24.4.206.1"
+
+Exit() {
+	rm -f $LOCKFILE
+	if [ $# != 1 ]; then
+		exit $ESTATUS
+	else
+		exit $1
+	fi
+}
+
+trap Exit EXIT
+touch $LOCKFILE
+
+#
+# $1 : number of packets
+# $2 : target
+# return 
+Ping() {
+	test $# -eq 2 || return -1
+	PCT="100%"
+	RCV=0
+	TIME=""
+	while read -a r ; do
+		if [ "${r[2]}" = "transmitted," ]; then
+			RCV=${r[3]}
+			PCT=${r[6]}
+		fi
+		if [ "${r[0]}" = "round-trip" ]; then
+			TIME=${r[3]}
+		fi
+	done << @EOF
+	`ping -q -c $1 $2 2>&1`
+@EOF
+	if [ $RCV -eq $1 ]; then
+		logger -t $PROGNAME $2: $TIME
+	else
+  		logger -t $PROGNAME $2: $PCT packet loss
+	fi
+}
+
+ping -q -c 3 $GOOGLE >/dev/null 2>&1
+Ping 5 $GOOGLE
+if [ $RCV -ne 5 ]; then
+	Ping 5 $ROUTER
+fi
+
+$GH www.yahoo.com > /dev/null 2>&1
+if [ $? != 0 ]; then
+  logger -t $PROGNAME DNS lookup failure
+fi
