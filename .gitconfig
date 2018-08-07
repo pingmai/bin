@@ -1,0 +1,10 @@
+[user]
+	name = ping
+	email = ping@stepnet.com
+[credential]
+	helper = cache
+[core]
+	pager = less -FXIMn
+[diff]
+	context = 0
+	color =
