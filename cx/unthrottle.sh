@@ -1,0 +1,1 @@
+nodetool setcompactionthroughput 0
